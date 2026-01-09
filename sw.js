@@ -1,4 +1,4 @@
-const CACHE = "money-tracker-v2.10";
+const CACHE = "oddity-money-tracker-v2.10";
 
 self.addEventListener("install", e => {
   self.skipWaiting();
@@ -23,3 +23,4 @@ self.addEventListener("fetch", e => {
     caches.match(e.request).then(r => r || fetch(e.request))
   );
 });
+
