@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Money Tracker</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body { font-family: system-ui, sans-serif; background:#0f1220; color:#f5f5f5; margin:0; padding:16px; }
+    h1, h2, h3 { margin-top:0; }
+    .card { background:#1b1f3a; border-radius:12px; padding:16px; margin-bottom:16px; }
+    button { padding:10px 14px; border-radius:10px; border:none; cursor:pointer; font-size:16px; margin-top:8px; }
+    .primary { background:#6c7bff; color:white; }
+    .danger { background:#ff6c6c; color:white; }
+    .neutral { background:#3a3f6c; color:white; }
+    select, input { width:100%; padding:10px; border-radius:10px; border:none; margin-top:8px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+    .task { background:#2a2f5a; }
+    .hidden { display:none; }
+    .list-item { border-bottom:1px solid #2f3466; padding:8px 0; }
+    small { opacity:0.7; }
+  </style>
+</head>
+<body>
+
+<h1>System Money Tracker</h1>
+
+<!-- ALTER SELECT -->
+<div class="card" id="screen-alter">
+  <h2>Select Alter</h2>
+  <select id="alterSelect"></select>
+  <button class="primary" onclick="enterAsAlter()">Continue</button>
+</div>
+
+<!-- TASKS -->
+<div class="card hidden" id="screen-tasks">
+  <h2 id="currentAlterTitle"></h2>
+  <div class="row" id="taskButtons"></div>
+  <button class="primary" onclick="submitSpendRequest()">Spend Money</button>
+  <button class="primary" onclick="submitCustomRequest()">Custom Request</button>
+  <button class="neutral" onclick="goBack()">Change Alter</button>
+</div>
+
+<!-- TREASURER -->
+<div class="card hidden" id="screen-treasurer">
+  <h2>Treasurer Inbox</h2>
+
+  <h3>Change Treasurer PIN</h3>
+  <input id="oldPin" placeholder="Current PIN" type="password" />
+  <input id="newPin" placeholder="New PIN" type="password" />
+  <input id="confirmPin" placeholder="Confirm New PIN" type="password" />
+  <button class="neutral" onclick="changePin()">Change PIN</button>
+
+  <hr />
+  <div id="requestsList"></div>
+  <button class="neutral" onclick="goBack()">Back</button>
+</div>
+
+<!-- BALANCES -->
+<div class="card hidden" id="screen-balances">
+  <h2>Balances</h2>
+  <div id="balancesList"></div>
+</div>
+
+<!-- TRANSACTION HISTORY -->
+<div class="card hidden" id="screen-history">
+  <h2>Transaction History</h2>
+  <div id="historyList"></div>
+</div>
+
+<script>
+// ---------------- DATA ----------------
+const DEFAULT_TASKS = [
+  { name: "Shower", amount: 5 },
+  { name: "Ate", amount: 3 },
+  { name: "Chores", amount: 10 },
+  { name: "School", amount: 15 },
+  { name: "Rest / Existing", amount: 5 }
+];
+
+let state = JSON.parse(localStorage.getItem("systemMoney")) || {
+  treasurerPin: "1234",
+  alters: {
+    Treasurer: { balance: 0, notifications: [] },
+    Veeronica: { balance: 0, notifications: [] },
+    Nathaniel: { balance: 0, notifications: [] },
+    Dyle: { balance: 0, notifications: [] },
+    Mariah: { balance: 0, notifications: [] },
+    Solar: { balance: 0, notifications: [] },
+    Starla: { balance: 0, notifications: [] },
+    Tisha: { balance: 0, notifications: [] },
+    Blake: { balance: 0, notifications: [] },
+    David: { balance: 0, notifications: [] },
+    Denise: { balance: 0, notifications: [] },
+    Denis: { balance: 0, notifications: [] },
+    Drew: { balance: 0, notifications: [] },
+    Gangle: { balance: 0, notifications: [] },
+    Iris: { balance: 0, notifications: [] },
+    Jax: { balance: 0, notifications: [] },
+    Miku: { balance: 0, notifications: [] },
+    Rudie: { balance: 0, notifications: [] },
+    Sage: { balance: 0, notifications: [] },
+    "Shadow bonnie": { balance: 0, notifications: [] },
+    SnowFlake: { balance: 0, notifications: [] }
+  },
+  requests: [],
+  history: []
+};
+
+let currentAlter = null;
+
+function save() {
+  localStorage.setItem("systemMoney", JSON.stringify(state));
+}
+
+// ---------------- ALTER SELECTION ----------------
+function renderAlterSelect() {
+  const sel = document.getElementById("alterSelect");
+  sel.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select an alter";
+  sel.appendChild(placeholder);
+
+  Object.keys(state.alters).forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
+function enterAsAlter() {
+  const sel = document.getElementById("alterSelect");
+  if (!sel.value) return alert("Please select an alter");
+
+  currentAlter = sel.value;
+  document.getElementById("screen-alter").classList.add("hidden");
+
+  if (currentAlter === "Treasurer") {
+    const code = prompt("Enter Treasurer PIN:");
+    if (code !== state.treasurerPin) {
+      alert("Incorrect PIN");
+      goBack();
+      return;
+    }
+    showTreasurer();
+  } else {
+    showTasks();
+  }
+}
+
+function goBack() {
+  currentAlter = null;
+  document.querySelectorAll('.card').forEach(c => c.classList.add('hidden'));
+  document.getElementById("screen-alter").classList.remove("hidden");
+}
+
+// ---------------- TASKS ----------------
+function showTasks() {
+  document.getElementById("screen-tasks").classList.remove("hidden");
+  document.getElementById("screen-balances").classList.remove("hidden");
+  document.getElementById("screen-history").classList.remove("hidden");
+
+  document.getElementById("currentAlterTitle").textContent = `Logged in as ${currentAlter}`;
+
+  const container = document.getElementById("taskButtons");
+  container.innerHTML = "";
+
+  DEFAULT_TASKS.forEach(task => {
+    const btn = document.createElement("button");
+    btn.className = "task";
+    btn.textContent = `${task.name} (+${task.amount})`;
+    btn.onclick = () => submitRequest(task);
+    container.appendChild(btn);
+  });
+
+  showNotifications();
+  renderBalances();
+  renderHistory();
+}
+
+// ---------------- REQUESTS ----------------
+function submitRequest(task) {
+  state.requests.push({
+    alter: currentAlter,
+    task: task.name,
+    amount: task.amount,
+    type: "earn",
+    note: prompt("Optional note:") || "",
+    status: "pending",
+    time: new Date().toLocaleString()
+  });
+  save();
+  alert("Request sent");
+}
+
+function submitSpendRequest() {
+  let amount = parseFloat(prompt("Amount to spend:"));
+  if (isNaN(amount) || amount <= 0) return alert("Invalid amount");
+
+  state.requests.push({
+    alter: currentAlter,
+    task: "Spend",
+    amount,
+    type: "spend",
+    note: prompt("Reason for spending:") || "",
+    status: "pending",
+    time: new Date().toLocaleString()
+  });
+  save();
+  alert("Spend request sent");
+}
+
+function submitCustomRequest() {
+  let amount = parseFloat(prompt("Enter amount:"));
+  if (isNaN(amount) || amount <= 0) return alert("Invalid amount");
+  const reason = prompt("Reason:");
+  if (!reason) return;
+
+  state.requests.push({
+    alter: currentAlter,
+    task: reason,
+    amount,
+    type: "earn",
+    note: prompt("Optional note:") || "",
+    status: "pending",
+    time: new Date().toLocaleString()
+  });
+  save();
+}
+
+// ---------------- TREASURER ----------------
+function showTreasurer() {
+  document.getElementById("screen-treasurer").classList.remove("hidden");
+  document.getElementById("screen-balances").classList.remove("hidden");
+  document.getElementById("screen-history").classList.remove("hidden");
+  renderRequests();
+  renderBalances();
+  renderHistory();
+}
+
+function renderRequests() {
+  const list = document.getElementById("requestsList");
+  list.innerHTML = "";
+
+  state.requests.forEach((r, index) => {
+    if (r.status !== "pending") return;
+
+    const div = document.createElement("div");
+    div.className = "list-item";
+
+    div.innerHTML = `<strong>${r.alter}</strong> — ${r.task} (${r.type === 'earn' ? '+' : '-'}${r.amount})<br><em>${r.note}</em><br><small>${r.time}</small>`;
+
+    const approve = document.createElement("button");
+    approve.className = "primary";
+    approve.textContent = "Approve";
+    approve.onclick = () => approveRequest(index);
+
+    const deny = document.createElement("button");
+    deny.className = "danger";
+    deny.textContent = "Deny";
+    deny.onclick = () => denyRequest(index);
+
+    div.appendChild(document.createElement("br"));
+    div.appendChild(approve);
+    div.appendChild(deny);
+
+    list.appendChild(div);
+  });
+}
+
+function approveRequest(index) {
+  const r = state.requests[index];
+
+  if (r.type === "earn") state.alters[r.alter].balance += r.amount;
+  if (r.type === "spend") state.alters[r.alter].balance -= r.amount;
+
+  r.status = "approved";
+
+  state.history.push({ ...r, decision: "approved" });
+  state.alters[r.alter].notifications.push(`Approved: ${r.task} (${r.amount})`);
+
+  save();
+  renderRequests();
+  renderBalances();
+  renderHistory();
+}
+
+function denyRequest(index) {
+  const r = state.requests[index];
+  const reason = prompt("Reason for denial:") || "No reason provided";
+
+  r.status = "denied";
+  r.denialReason = reason;
+
+  state.history.push({ ...r, decision: "denied" });
+  state.alters[r.alter].notifications.push(`Denied: ${r.task} — ${reason}`);
+
+  save();
+  renderRequests();
+  renderHistory();
+}
+
+// ---------------- HISTORY ----------------
+function renderHistory() {
+  const list = document.getElementById("historyList");
+  list.innerHTML = "";
+
+  state.history.forEach(h => {
+    if (currentAlter !== "Treasurer" && h.alter !== currentAlter) return;
+    const div = document.createElement("div");
+    div.className = "list-item";
+    div.textContent = `${h.time} — ${h.alter} — ${h.task} (${h.decision})`;
+    list.appendChild(div);
+  });
+}
+
+// ---------------- BALANCES ----------------
+function renderBalances() {
+  const list = document.getElementById("balancesList");
+  list.innerHTML = "";
+  Object.entries(state.alters).forEach(([name, data]) => {
+    if (currentAlter !== "Treasurer" && name !== currentAlter) return;
+    const div = document.createElement("div");
+    div.textContent = `${name}: ${data.balance}`;
+    list.appendChild(div);
+  });
+}
+
+// ---------------- NOTIFICATIONS ----------------
+function showNotifications() {
+  const notes = state.alters[currentAlter].notifications;
+  if (notes.length) {
+    alert(notes.join("\n"));
+    state.alters[currentAlter].notifications = [];
+    save();
+  }
+}
+
+// ---------------- PIN CHANGE ----------------
+function changePin() {
+  const oldPin = document.getElementById("oldPin").value;
+  const newPin = document.getElementById("newPin").value;
+  const confirm = document.getElementById("confirmPin").value;
+
+  if (oldPin !== state.treasurerPin) return alert("Incorrect current PIN");
+  if (!newPin || newPin !== confirm) return alert("PINs do not match");
+
+  state.treasurerPin = newPin;
+  save();
+  alert("PIN changed successfully");
+}
+
+// ---------------- INIT ----------------
+renderAlterSelect();
+</script>
+</body>
+</html>
